@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>dev.javafxmobile</groupId>
+    <artifactId>hello-mobile</artifactId>
+    <version>0.1</version>
+    <name>HelloMobile</name>
+
+    <!--
+        No com.gluonhq.attach.* or com.gluonhq:charm-glisten dependency anywhere in this POM.
+        The only Gluon-authored piece involved is the gluonfx-maven-plugin build tool below,
+        which is BSD-3-Clause licensed and requires no license key. See ../../docs/licensing.md.
+    -->
+
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+
+        <android.minSdkVersion>35</android.minSdkVersion>
+        <android.targetSdkVersion>36</android.targetSdkVersion>
+        <android.compileSdkVersion>36</android.compileSdkVersion>
+        <android.buildToolsVersion>35.0.0</android.buildToolsVersion>
+
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <org.openjfx.controls.version>17.0.17</org.openjfx.controls.version>
+
+        <maven.compiler.plugin.version>3.14.0</maven.compiler.plugin.version>
+        <javafx.maven.plugin.version>0.0.8</javafx.maven.plugin.version>
+        <gluonfx.maven.plugin.version>1.0.28</gluonfx.maven.plugin.version>
+
+        <main.class>dev.javafxmobile.hello.HelloMobileApp</main.class>
+    </properties>
+
+    <dependencies>
+        <!-- Plain JavaFX only -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>${org.openjfx.controls.version}</version>
+        </dependency>
+    </dependencies>
+
+    <profiles>
+        <profile>
+            <id>android</id>
+            <properties>
+                <gluonfx.target>android</gluonfx.target>
+                <manifestPath>${project.basedir}/src/android/AndroidManifest.xml</manifestPath>
+            </properties>
+        </profile>
+        <profile>
+            <id>ios</id>
+            <properties>
+                <gluonfx.target>ios</gluonfx.target>
+            </properties>
+        </profile>
+    </profiles>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven.compiler.plugin.version}</version>
+                <configuration>
+                    <source>${maven.compiler.source}</source>
+                    <target>${maven.compiler.target}</target>
+                    <release>17</release>
+                </configuration>
+            </plugin>
+
+            <!-- Desktop run, for fast iteration without a native build -->
+            <plugin>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-maven-plugin</artifactId>
+                <version>${javafx.maven.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>default-cli</id>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <mainClass>${main.class}</mainClass>
+                </configuration>
+            </plugin>
+
+            <!-- Native Android/iOS build. Free, BSD-3-Clause, no license key required. -->
+            <plugin>
+                <groupId>com.gluonhq</groupId>
+                <artifactId>gluonfx-maven-plugin</artifactId>
+                <version>${gluonfx.maven.plugin.version}</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <verbose>true</verbose>
+                    <target>${gluonfx.target}</target>
+                    <mainClass>${main.class}</mainClass>
+
+                    <!-- Required by Google Play since 2025-11-01: 16 KB page size support. -->
+                    <linkerArgs>
+                        <arg>-Wl,-z,max-page-size=16384</arg>
+                    </linkerArgs>
+                    <nativeImageArgs>
+                        <arg>-H:PageSize=16384</arg>
+                        <arg>-H:NativeLinkerOption=-Wl,-z,max-page-size=16384</arg>
+                    </nativeImageArgs>
+
+                    <releaseConfiguration>
+                        <appLabel>HelloMobile</appLabel>
+                        <versionCode>1</versionCode>
+                        <versionName>0.1</versionName>
+                    </releaseConfiguration>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
