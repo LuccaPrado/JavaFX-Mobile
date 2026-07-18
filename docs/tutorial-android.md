@@ -132,6 +132,8 @@ mvn gluonfx:run
 
 (this actually invokes `org.openjfx:javafx-maven-plugin`'s `run` goal wired up in the POM — see the example POM for the exact binding).
 
+This isn't just this tutorial's opinion — it's what other real JavaFX-on-Android projects converge on independently. [mipastgt/JFXToolsAndDemos](https://github.com/mipastgt/JFXToolsAndDemos/blob/master/docs/articles/JFX-Android/JFX-Android.adoc) reports the same ~4-5 minute native build time on an Intel NUC/Ubuntu box and describes doing "all development and testing on my preferred platform (macOS) with the regular Java VM" — cross-compiling only after the feature works on desktop. The same report is also useful evidence for this repo's core claim: their app pulls in ordinary third-party Maven libraries (SLF4J, Jackson, Commons IO/lang3/math3, Eclipse Paho MQTT, ikonli, miglayout) with no Gluon-specific forks, and they all cross-compile through `gluonfx-maven-plugin` without issue.
+
 ## 7. Verify the 16 KB page alignment
 
 Google provides `check_elf_alignment` to confirm your APK/library actually meets the November 2025 requirement before you upload anywhere:
@@ -240,4 +242,21 @@ This is caused by giving the `Scene` an explicit fixed size at construction time
 
 The fix: never give the `Scene` itself an explicit width/height on a build that targets Android — always construct it as `new Scene(root)` and let it defer to the native window's actual bounds every time, cold start or resume alike. If you want a specific window size for desktop development (`mvn gluonfx:run`), set it on the root node instead — `root.setPrefSize(360, 640)` — since that's just an initial layout hint for the root `Region`, not a cached size the `Scene` treats as authoritative; the `Scene` still resizes the root to fill whatever space it actually has, on every platform. `examples/hello-mobile` does this from the start; if you're adapting a project of your own, look for `new Scene(root, <width>, <height>)` and drop the width/height arguments.
 
-This diagnosis is based on the code and on how JavaFX's Android backend handles resize-on-resume — it wasn't reproduced against a physical device in the writing of this tutorial (see §5's note on why an emulator can't substitute for one here). If you hit this and the fix above doesn't fully resolve it, please compare notes against your specific device/Android version rather than assuming this is the complete story.
+**Update, verified on a physical device:** the `Scene(root)` + `root.setPrefSize(...)` fix above is correct and was confirmed on a real Samsung Galaxy A32 — `sceneRoot` genuinely does get resized to the full device bounds on every launch, cold start and resume alike. But the exact same visual symptom (content confined to a small area, rest of the screen blank) has a **second, unrelated cause** that's easy to mistake for this one: if your scene root is a `StackPane` whose single child is *another* container carrying your visible background/card styling (a common pattern once you have more than one screen to swap between, e.g. `sceneRoot → StackPane (per-screen root) → VBox (the actual "card")`), that inner `VBox` has an unbounded default max size, so `StackPane` stretches it to fill the *entire* screen rather than leaving it at its natural content height. The card's background now paints edge-to-edge, and since `StackPane`'s default alignment only positions node origins (not size), whatever `Pos.TOP_CENTER`/similar alignment you set on the `VBox`'s own children just clusters your title/fields/buttons at the top of that now-huge box — which looks identical to "doesn't fill the screen" but is actually the opposite mechanism (over-filling a container that shouldn't have grown, not under-filling one that should have). Desktop testing at a small window size (e.g. 360×640) won't surface this, because there isn't enough slack between the card's natural height and the window for the stretch to be visually obvious — it only shows up once the available height is much larger than the content, i.e. on an actual phone screen.
+
+The fix is a layout constraint, not a sizing one: cap the card/content container so it can't grow past what it needs —
+
+```java
+card.setMaxHeight(Region.USE_PREF_SIZE);
+```
+
+— which lets the `StackPane` fall back to actually centering it (or aligning it per whatever `Pos` you configured) within the real available space, instead of stretching it to fill that space first.
+
+**Restyling `DatePicker` (or other `ComboBoxBase` controls) leaves a mismatched second border, and/or the selected value's text doesn't pick up your color.**
+
+Two separate Modena defaults bite you here, and both were only visible once actually restyling a `DatePicker` end-to-end rather than a plain `TextField`:
+
+- Modena paints a `-fx-focus-color` glow as its own background *behind the entire control* on `.date-picker:focused` (bleeding slightly outside the control's bounds via a negative background-inset), independent of whatever background/border you put on the inner `.text-field`/`.arrow-button`. Overriding only the children's focused-state rules leaves this outer glow in place underneath them, which reads as a second, differently-colored border ringing the whole control. Neutralize the parent rule directly: `.date-picker, .date-picker:focused { -fx-background-color: transparent; -fx-background-insets: 0; }`, and let your own `.text-field`/`.arrow-button` focus rules be the only visible outline.
+- A `-fx-text-fill` set only on `.date-picker > .text-field` can lose to a more specific/differently-scoped rule for the *populated* (non-prompt) state on some builds — belt-and-suspenders it with a broader descendant selector that isn't tied to the exact skin structure: `.date-picker .text-field, .date-picker .text-input { -fx-text-fill: ...; }`. Test this one with an actual selected value, not just the empty/prompt state — the prompt text and the real value can legitimately resolve through different rules.
+
+Both were confirmed by cross-checking against the exact selectors Modena itself uses for `DatePicker`, extracted straight from `com/sun/javafx/scene/control/skin/modena/modena.css` inside the `javafx-controls` jar — that file is the authoritative source for what a selector needs to match, rather than guessing from the rendered output.
